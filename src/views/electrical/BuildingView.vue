@@ -4,7 +4,15 @@
     <!-- Back + Header -->
     <div class="page-header">
       <button class="back-btn" @click="$router.back()">‹ Back</button>
+      
     </div>
+
+    <div><button
+  class="cross-link"
+  @click="$router.push({ name: 'FireSafetyDetail', params: { id: props.id } })"
+>
+  🧯 View Fire Safety Status
+</button></div>
 
     <div v-if="store.loading.currentBuilding" class="skeleton-header" />
 

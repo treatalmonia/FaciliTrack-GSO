@@ -9,6 +9,7 @@ import ElectricalReports   from '@/views/electrical/ElectricalReports.vue'
 
 // ── Fire Safety views ───────────────────────────────────────────────────────
 import FireSafetyDashboard from '@/views/fire-safety/FireSafetyDashboard.vue'
+import FireSafetyDetail    from '@/views/fire-safety/FireSafetyDetail.vue'
 import BFPReport           from '@/views/fire-safety/BFPReport.vue'
 import ExpiryTracker       from '@/views/fire-safety/ExpiryTracker.vue'
 import MovementLog         from '@/views/fire-safety/MovementLog.vue'
@@ -65,6 +66,13 @@ const routes = [
     name: 'FireSafetyDashboard',
     component: FireSafetyDashboard,
     meta: { module: 'fire-safety', title: 'Fire Safety' },
+  },
+  {
+    path: '/fire-safety/building/:id',
+    name: 'FireSafetyDetail',
+    component: FireSafetyDetail,
+    props: true,
+    meta: { module: 'fire-safety', title: 'Building Fire Safety' },
   },
   {
     path: '/fire-safety/bfp-report',
