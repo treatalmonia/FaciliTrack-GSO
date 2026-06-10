@@ -1,12 +1,16 @@
 <template>
   <button class="room-card" @click="$emit('click')">
     <div class="room-card__left">
-      <span class="room-card__number">{{ room.room_number }}</span>
-      <span class="room-card__name">{{ room.room_name }}</span>
+      <span class="room-card__number">{{ room.room_name }}</span>
+      <span class="room-card__name">{{ room.room_number }}</span>
     </div>
-    <div class="room-card__right">
+    <div class="room-card__right" @click.stop="$emit('edit-room')">
+      <span class="room-card__edit">✏</span>
       <span v-if="openCount > 0" class="room-card__dot room-card__dot--open">
         {{ openCount }} pending
+      </span>
+      <span v-else-if="bustedCount > 0" class="room-card__dot room-card__dot--busted">
+        {{ bustedCount }} busted
       </span>
       <span v-else class="room-card__dot room-card__dot--ok">No issues</span>
       <span class="room-card__arrow">›</span>
@@ -16,10 +20,11 @@
 
 <script setup>
 defineProps({
-  room:      { type: Object, required: true },
-  openCount: { type: Number, default: 0 },
+  room:        { type: Object, required: true },
+  openCount:   { type: Number, default: 0 },
+  bustedCount: { type: Number, default: 0 },
 })
-defineEmits(['click'])
+defineEmits(['click', 'edit-room'])
 </script>
 
 <style scoped>
@@ -72,8 +77,14 @@ defineEmits(['click'])
   border-radius: 20px;
 }
 .room-card__dot--open { background: #fef3c7; color: #92400e; }
-.room-card__dot--ok   { background: #d4f0df; color: #1a7f37; }
+.room-card__dot--ok     { background: #d4f0df; color: #1a7f37; }
+.room-card__dot--busted { background: var(--red-light); color: var(--red); }
 
+.room-card__edit {
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding: 4px 6px;
+}
 .room-card__arrow {
   font-size: 20px;
   color: var(--text-secondary);

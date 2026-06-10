@@ -12,6 +12,7 @@
       :loading="store.loading.addRequest"
       submit-label="Save Request"
       @submit="handleSubmit"
+@add-item="goToAddItem"
     />
 
     <!-- Post-save options -->
@@ -86,6 +87,10 @@ async function handleSubmit(formData) {
     // Error is shown by the form via store.error.addRequest
     alert(store.error.addRequest ?? 'Failed to save request. Please try again.')
   }
+}
+
+function goToAddItem() {
+  router.push({ name: 'NewRequest' }) // temporary — replace with your actual Add Item route name
 }
 
 function addAnother() {

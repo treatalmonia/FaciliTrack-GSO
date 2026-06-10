@@ -30,6 +30,15 @@
         <EquipmentSection
           :equipment="store.currentRoom.equipment_item ?? []"
           @edit-item="openEditEquipment"
+          @add-item="openAddItem"
+        />
+
+        <AddItemModal
+          v-if="showAddItemModal"
+          :room-id="Number(props.roomId)"
+          :preset-category="addItemCategory"
+          @close="showAddItemModal = false"
+          @saved="onItemAdded"
         />
       </section>
 
@@ -208,6 +217,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useElectricalStore } from '@/stores/electrical'
 import EquipmentSection    from '@/components/electrical/EquipmentSection.vue'
+import AddItemModal        from '@/components/electrical/AddItemModal.vue'
 import RequestCard         from '@/components/electrical/RequestCard.vue'
 import ResolvedRequestCard from '@/components/electrical/ResolvedRequestCard.vue'
 import EmptyState          from '@/components/common/EmptyState.vue'
@@ -228,6 +238,8 @@ const showHistory        = ref(false)
 const showAllResolved    = ref(false)
 const showResolveDialog  = ref(false)
 const showEditEquipment  = ref(false)
+const showAddItemModal   = ref(false)
+const addItemCategory    = ref('')
 const editEquipmentConfirm = ref(false)
 
 // Resolve form
@@ -283,6 +295,17 @@ async function handleResolve() {
 }
 
 // ── Edit Equipment ─────────────────────────────────────────────────────────
+function openAddItem(categoryKey) {
+  addItemCategory.value = categoryKey
+  showAddItemModal.value = true
+}
+
+async function onItemAdded() {
+  showAddItemModal.value = false
+  await store.fetchRoomById(Number(props.roomId))
+  toast.value = { show: true, message: 'Item added.', type: 'success' }
+}
+
 function openEditEquipment(item) {
   editingItem.value = { ...item }
   editEquipmentForm.value = { total_count: item.total_count, busted_count: item.busted_count }
@@ -320,6 +343,19 @@ async function handleEditEquipment() {
   } else {
     toast.value = { show: true, message: store.error.updateEquipment ?? 'Failed to update.', type: 'error' }
   }
+}
+
+// ── Edit Request ───────────────────────────────────────────────────────────
+function openEditRequest(request) {
+  router.push({
+    name: 'NewRequest',
+    query: {
+      edit: request.request_id,
+      building_id: props.id,
+      floor_level: store.currentRoom?.floor_level,
+      room_id: props.roomId,
+    },
+  })
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────────────────

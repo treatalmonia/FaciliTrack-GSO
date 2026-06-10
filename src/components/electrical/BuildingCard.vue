@@ -12,7 +12,7 @@
         {{ openCount }}
       </span>
       <span class="building-card__badge-label">
-        {{ openCount === 1 ? 'open' : 'open' }}
+        {{ openCount === 1 ? 'pending' : 'pending' }}
       </span>
       <span class="building-card__arrow">›</span>
     </div>

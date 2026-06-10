@@ -34,7 +34,7 @@
 
       <!-- Floor summary -->
       <div class="floor-summary">
-        <span class="floor-summary__label">Busted items on this floor:</span>
+        <span class="floor-summary__label">Issues on this floor:</span>
         <span class="floor-summary__count" :class="{ 'floor-summary__count--alert': floorBustedCount > 0 }">
           {{ floorBustedCount }}
         </span>
@@ -58,12 +58,14 @@
       <!-- Room list (only rooms with open requests, unless showAll) -->
       <div v-else class="rooms-list">
         <RoomCard
-          v-for="room in visibleRooms"
-          :key="room.room_id"
-          :room="room"
-          :open-count="openCountByRoom[room.room_id] ?? 0"
-          @click="goToRoom(room)"
-        />
+            v-for="room in visibleRooms"
+            :key="room.room_id"
+            :room="room"
+            :open-count="openCountByRoom[room.room_id] ?? 0"
+            :busted-count="(room.equipment_item ?? []).reduce((s, e) => s + (e.busted_count ?? 0), 0)"
+            @click="goToRoom(room)"
+            @edit-room="openEditRoom(room)"
+          />
 
         <button
           v-if="hiddenRooms > 0"
@@ -73,6 +75,28 @@
           Show all rooms ({{ hiddenRooms }} with no issues)
         </button>
       </div>
+
+      <!-- Edit Room Number -->
+      <Teleport to="body">
+        <Transition name="dialog">
+          <div v-if="showEditRoom" class="dialog-overlay" @click.self="showEditRoom = false">
+            <div class="dialog">
+              <h2 class="dialog__title">Edit Room Number</h2>
+              <div class="field">
+                <label class="field__label">Room number or code *</label>
+                <input v-model="editRoomNumber" class="field__input" placeholder="e.g., BH 101" />
+              </div>
+              <p v-if="editRoomError" class="field__error">{{ editRoomError }}</p>
+              <div class="dialog__actions">
+                <button class="dialog__btn dialog__btn--cancel" @click="showEditRoom = false">Cancel</button>
+                <button class="dialog__btn dialog__btn--confirm" :disabled="store.loading.editRoom" @click="handleEditRoom">
+                  {{ store.loading.editRoom ? 'Saving…' : 'Save' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
 
       <!-- Add Room button -->
       <button class="btn btn--add-room" @click="showAddRoom = true">
@@ -100,16 +124,11 @@
             </div>
             <div class="field">
               <label class="field__label">Room type / utilization *</label>
-              <select v-model="newRoom.room_name" class="field__select">
-                <option value="" disabled>Select room type</option>
-                <option v-for="t in roomTypes" :key="t" :value="t">{{ t }}</option>
-              </select>
-              <input
-                v-if="newRoom.room_name === 'Other'"
-                v-model="newRoom.room_name_custom"
-                class="field__input"
-                placeholder="Describe the room type"
-                style="margin-top: 8px"
+              <ComboBox
+                v-model="newRoom.room_name"
+                :options="roomTypes"
+                placeholder="e.g., Classroom, Laboratory"
+                @add="onRoomTypeAdded"
               />
             </div>
             <div class="field">
@@ -153,6 +172,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useElectricalStore } from '@/stores/electrical'
 import FloorTabs         from '@/components/electrical/FloorTabs.vue'
+import ComboBox          from '@/components/common/ComboBox.vue'
 import RoomCard          from '@/components/electrical/RoomCard.vue'
 import EmptyState        from '@/components/common/EmptyState.vue'
 import ToastNotification from '@/components/common/ToastNotification.vue'
@@ -176,9 +196,49 @@ const FLOOR_LABELS = [
 // ]
 
 const activeFloor    = ref('Ground Floor')
+
+const roomTypes = ref(
+  JSON.parse(localStorage.getItem('faciltrack_room_types') ?? '[]')
+)
+
+function onRoomTypeAdded(val) {
+  if (!roomTypes.value.includes(val)) {
+    roomTypes.value.push(val)
+    localStorage.setItem('faciltrack_room_types', JSON.stringify(roomTypes.value))
+  }
+}
 const showAllRooms   = ref(false)
-const showAddRoom    = ref(false)
+const showAddRoom = computed({
+  get: () => _showAddRoom.value,
+  set: (val) => {
+    _showAddRoom.value = val
+    if (val) newRoom.value.floor_level = activeFloor.value
+  },
+})
+const _showAddRoom = ref(false)
 const addRoomError   = ref('')
+const showEditRoom   = ref(false)
+const editRoomNumber = ref('')
+const editRoomError  = ref('')
+const editingRoom    = ref(null)
+
+function openEditRoom(room) {
+  editingRoom.value    = room
+  editRoomNumber.value = room.room_number
+  editRoomError.value  = ''
+  showEditRoom.value   = true
+}
+
+async function handleEditRoom() {
+  if (!editRoomNumber.value.trim()) { editRoomError.value = 'Room number cannot be empty.'; return }
+  const result = await store.updateRoomNumber(editingRoom.value.room_id, editRoomNumber.value.trim())
+  if (result) {
+    showEditRoom.value = false
+    toast.value = { show: true, message: 'Room number updated.', type: 'success' }
+  } else {
+    editRoomError.value = store.error.editRoom ?? 'Failed to update.'
+  }
+}
 const toast          = ref({ show: false, message: '', type: 'success' })
 
 const newRoom = ref({
@@ -208,7 +268,11 @@ const openCountByRoom = computed(() => {
 
 const visibleRooms = computed(() => {
   if (showAllRooms.value) return roomsOnFloor.value
-  return roomsOnFloor.value.filter((r) => (openCountByRoom.value[r.room_id] ?? 0) > 0)
+  return roomsOnFloor.value.filter((r) => {
+    const hasOpen   = (openCountByRoom.value[r.room_id] ?? 0) > 0
+    const hasBusted = (r.equipment_item ?? []).reduce((s, e) => s + (e.busted_count ?? 0), 0) > 0
+    return hasOpen || hasBusted
+  })
 })
 
 const hiddenRooms = computed(() =>
@@ -250,8 +314,14 @@ async function handleAddRoom() {
   })
 
   if (result) {
+    // Save room type to local suggestions if not already there
+    const typeName = finalName.trim()
+    if (typeName && !roomTypes.value.includes(typeName)) {
+      roomTypes.value.push(typeName)
+      localStorage.setItem('faciltrack_room_types', JSON.stringify(roomTypes.value))
+    }
     showAddRoom.value = false
-    newRoom.value = { floor_level: '', room_number: '', room_name: '', room_name_custom: '', floor_area_sqm: null }
+    newRoom.value = { floor_level: activeFloor.value, room_number: '', room_name: '', room_name_custom: '', floor_area_sqm: null }
     toast.value = { show: true, message: 'Room added.', type: 'success' }
     activeFloor.value = result.floor_level
     showAllRooms.value = true

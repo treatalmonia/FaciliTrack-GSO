@@ -1,73 +1,104 @@
 <template>
-  <div class="dashboard">
+  <div class="elec-dashboard">
 
-    <!-- Header -->
-    <header class="dashboard__header">
-  <div>
-    <h1 class="dashboard__title">Electrical Repairs</h1>
-    <p class="dashboard__subtitle">Caraga State University — GSO</p>
-  </div>
-  <button
-    class="reports-link"
-    @click="$router.push({ name: 'ElectricalReports' })"
-  >
-    📋 Reports
-  </button>
-</header>
-
-    <!-- Total open counter -->
-    <section class="dashboard__counter">
-      <span class="counter__number" :class="{ 'counter__number--alert': totalOpenCount > 0 }">
-        {{ store.loading.allOpen ? '…' : totalOpenCount }}
-      </span>
-      <span class="counter__label">
-        {{ totalOpenCount === 1 ? 'unresolved request' : 'unresolved requests' }}
-        across all buildings
-      </span>
-    </section>
-
-    <!-- Error state -->
-    <div v-if="store.error.buildings" class="error-banner">
-      Could not load buildings. Please check your connection and try again.
+    <!-- ── Search bar ── -->
+    <div class="search-bar-wrap">
+      <button class="search-bar" @click="searchStore.openSearch()">
+        <span class="search-bar__icon">🔍</span>
+        <span class="search-bar__placeholder">Search buildings, rooms, or items…</span>
+      </button>
     </div>
 
-    <!-- Building list -->
-    <section class="dashboard__buildings">
-      <div class="section-header">
-        <h2 class="section-header__title">Buildings</h2>
-        <button class="btn btn--add" @click="showAddBuilding = true">
-          + Add Building
+    <!-- ── New Request — full width primary action ── -->
+    <button class="new-request-btn" @click="$router.push({ name: 'NewRequest' })">
+      + New Request
+    </button>
+
+    <!-- ── Stats row ── -->
+    <div v-if="store.loading.allOpen || loadingStats" class="stats-row">
+      <div v-for="n in 3" :key="n" class="skeleton" style="height:80px; flex:1" />
+    </div>
+    <div v-else class="stats-row">
+      <div class="stat-tile" :class="store.totalOpenCount > 0 ? 'stat-tile--red' : 'stat-tile--green'">
+        <span class="stat-tile__number">{{ store.totalOpenCount }}</span>
+        <span class="stat-tile__label">Open requests</span>
+      </div>
+      <div class="stat-tile" :class="resolvedThisMonth > 0 ? 'stat-tile--green' : ''">
+        <span class="stat-tile__number">{{ resolvedThisMonth }}</span>
+        <span class="stat-tile__label">Resolved this month</span>
+      </div>
+      <div class="stat-tile" :class="buildingsWithIssues > 0 ? 'stat-tile--yellow' : 'stat-tile--green'">
+        <span class="stat-tile__number">{{ buildingsWithIssues }}</span>
+        <span class="stat-tile__label">Buildings with issues</span>
+      </div>
+    </div>
+
+    <!-- ── Buildings ── -->
+    <div class="buildings-block">
+      <p class="section-label">BUILDINGS</p>
+
+      <!-- Loading -->
+      <div v-if="store.loading.buildings" class="skeleton-list">
+        <div v-for="n in 3" :key="n" class="skeleton" style="height: 68px" />
+      </div>
+
+      <!-- Error -->
+      <div v-else-if="store.error.buildings" class="error-banner">
+        Could not load buildings. Please check your connection and try again.
+      </div>
+
+      <!-- Empty -->
+      <div v-else-if="!store.buildings.length" class="empty-state">
+        <span class="empty-state__icon">🏢</span>
+        <p class="empty-state__title">No buildings added yet.</p>
+        <p class="empty-state__sub">Start by adding the first building on campus.</p>
+        <button class="btn-primary" style="margin-top:8px" @click="showAddBuilding = true">
+          Add First Building
         </button>
       </div>
 
-      <!-- Loading skeleton -->
-      <div v-if="store.loading.buildings" class="skeleton-list">
-        <div v-for="n in 4" :key="n" class="skeleton-card" />
-      </div>
-
-      <!-- Empty state -->
-      <EmptyState
-        v-else-if="!store.buildings.length"
-        icon="🏢"
-        title="No buildings added yet."
-        subtitle="Start by adding the first building on campus."
-        action-label="Add First Building"
-        @action="showAddBuilding = true"
-      />
-
-      <!-- Building cards -->
-      <div v-else class="buildings-list">
-        <BuildingCard
+      <!-- Building list -->
+      <div v-else class="building-list">
+        <button
           v-for="building in store.buildings"
           :key="building.building_id"
-          :building="building"
-          :open-count="store.openCountByBuilding[building.building_id] ?? 0"
+          class="building-row"
           @click="goToBuilding(building)"
-        />
-      </div>
-    </section>
+        >
+          <!-- Status dot -->
+          <span
+            class="building-row__dot"
+            :class="getDotClass(building.building_id)"
+          />
 
-    <!-- Add Building modal (simple inline form) -->
+          <!-- Text -->
+          <div class="building-row__text">
+            <span class="building-row__name">{{ building.building_name }}</span>
+            <span v-if="building.college_or_department" class="building-row__dept">
+              {{ building.college_or_department }}
+            </span>
+          </div>
+
+          <!-- Open count badge -->
+          <span
+            v-if="(store.openCountByBuilding[building.building_id] ?? 0) > 0"
+            class="building-row__badge"
+          >
+            {{ store.openCountByBuilding[building.building_id] }} open
+          </span>
+
+          <span class="building-row__arrow">›</span>
+        </button>
+
+        <!-- Add building row -->
+        <button class="building-row building-row--add" @click="showAddBuilding = true">
+          <span class="building-row__add-icon">＋</span>
+          <span class="building-row__add-label">Add Building</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Add Building Dialog ── -->
     <Teleport to="body">
       <Transition name="dialog">
         <div v-if="showAddBuilding" class="dialog-overlay" @click.self="showAddBuilding = false">
@@ -78,17 +109,19 @@
               <label class="field__label">Official name of the building *</label>
               <input v-model="newBuilding.building_name" class="field__input" placeholder="e.g., Kinaadman Hall" />
             </div>
+
             <div class="field">
-              <label class="field__label">How many floors does this building have? *</label>
+              <label class="field__label">How many floors?</label>
               <div class="stepper">
                 <button type="button" class="stepper__btn" @click="newBuilding.number_of_floors = Math.max(1, newBuilding.number_of_floors - 1)">−</button>
                 <span class="stepper__value">{{ newBuilding.number_of_floors }}</span>
                 <button type="button" class="stepper__btn" @click="newBuilding.number_of_floors = Math.min(10, newBuilding.number_of_floors + 1)">+</button>
               </div>
             </div>
+
             <div class="field">
-              <label class="field__label">Which college or office uses this building? (optional)</label>
-              <input v-model="newBuilding.college_or_department" class="field__input" placeholder="e.g., College of Education, GSO" />
+              <label class="field__label">College or office (optional)</label>
+              <input v-model="newBuilding.college_or_department" class="field__input" placeholder="e.g., College of Education" />
             </div>
 
             <p v-if="addBuildingError" class="field__error">{{ addBuildingError }}</p>
@@ -108,11 +141,6 @@
       </Transition>
     </Teleport>
 
-    <!-- New Request FAB -->
-    <button class="fab" @click="$router.push({ name: 'NewRequest' })">
-      + New Request
-    </button>
-
     <ToastNotification
       :show="toast.show"
       :message="toast.message"
@@ -123,36 +151,65 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useElectricalStore } from '@/stores/electrical'
-import BuildingCard      from '@/components/electrical/BuildingCard.vue'
-import EmptyState        from '@/components/common/EmptyState.vue'
-import ToastNotification from '@/components/common/ToastNotification.vue'
-// import { totalOpenCount } from '@/stores/electrical'  // re-export via store //delete for now
+import { useSearchStore }     from '@/stores/search'
+import { supabase }           from '@/lib/supabase'
+import ToastNotification      from '@/components/common/ToastNotification.vue'
 
-const router = useRouter()
-const store  = useElectricalStore()
-const totalOpenCount = computed(() => store.totalOpenCount)
+const router      = useRouter()
+const store       = useElectricalStore()
+const searchStore = useSearchStore()
 
-const showAddBuilding = ref(false)
-const addBuildingError = ref('')
-const newBuilding = ref({ building_name: '', number_of_floors: 1, college_or_department: '' })
+// ── Stats ─────────────────────────────────────────────────────────────────
+const resolvedThisMonth = ref(0)
+const loadingStats      = ref(false)
 
-const toast = ref({ show: false, message: '', type: 'success' })
+const buildingsWithIssues = computed(() =>
+  store.buildings.filter(
+    (b) => (store.openCountByBuilding[b.building_id] ?? 0) > 0
+  ).length
+)
 
-// Bring back the comment
-/* Comment for now */ 
-// // Use the getter from the store
-// const { totalOpenCount } = store
+async function fetchResolvedThisMonth() {
+  loadingStats.value = true
+  try {
+    const now   = new Date()
+    const from  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    
+   const { count, error: countErr } = await supabase
+  .from('repair_request')
+  .select('request_id', { count: 'exact', head: true })
+  .eq('status', 'Resolved')
+  .gte('date_resolved', from)
+if (!countErr) resolvedThisMonth.value = count ?? 0
 
-onMounted(async () => {
-  await Promise.all([store.fetchBuildings(), store.fetchAllOpenRequests()])
-})
+  } catch (err) {
+    console.error('[ElectricalDashboard] fetchResolvedThisMonth:', err)
+  } finally {
+    loadingStats.value = false
+  }
+}
 
+// ── Building dot color ─────────────────────────────────────────────────────
+function getDotClass(buildingId) {
+  const count = store.openCountByBuilding[buildingId] ?? 0
+  if (count === 0)   return 'dot--green'
+  if (count <= 5)    return 'dot--yellow'
+  return 'dot--red'
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
 function goToBuilding(building) {
   router.push({ name: 'BuildingView', params: { id: building.building_id } })
 }
+
+// ── Add building ───────────────────────────────────────────────────────────
+const showAddBuilding  = ref(false)
+const addBuildingError = ref('')
+const newBuilding      = ref({ building_name: '', number_of_floors: 1, college_or_department: '' })
+const toast            = ref({ show: false, message: '', type: 'success' })
 
 async function handleAddBuilding() {
   addBuildingError.value = ''
@@ -169,135 +226,208 @@ async function handleAddBuilding() {
     addBuildingError.value = store.error.addBuilding ?? 'Failed to add building.'
   }
 }
+
+// ── Init ───────────────────────────────────────────────────────────────────
+onMounted(async () => {
+  await Promise.all([
+    store.fetchBuildings(),
+    store.fetchAllOpenRequests(),
+    fetchResolvedThisMonth(),
+  ])
+})
 </script>
 
 <style scoped>
-.reports-link {
-  flex-shrink: 0;
-  padding: 10px 16px;
-  background: none;
-  border: 2px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  cursor: pointer;
-  min-height: 48px;
-  white-space: nowrap;
-}
-
-.dashboard {
-  max-width: 680px;
+.elec-dashboard {
+  max-width: var(--page-max);
   margin: 0 auto;
-  padding: 24px 16px 96px;
+  padding: 20px var(--page-pad) 80px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
-.dashboard__header { display: flex; justify-content: space-between; align-items: flex-start; }
-.dashboard__title  { font-size: 24px; font-weight: 800; color: var(--text-primary); margin: 0; }
-.dashboard__subtitle { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
-
-/* Counter */
-.dashboard__counter {
+/* Search bar */
+.search-bar-wrap { width: 100%; }
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 16px;
   background: var(--surface);
-  border-radius: 16px;
-  padding: 24px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  min-height: 52px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s;
+}
+.search-bar:hover { border-color: var(--blue); }
+.search-bar__icon        { font-size: 18px; opacity: 0.5; flex-shrink: 0; }
+.search-bar__placeholder { font-size: 15px; color: var(--text-disabled); }
+
+/* New Request button */
+.new-request-btn {
+  width: 100%;
+  padding: 16px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  cursor: pointer;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.15s, border-color 0.15s;
+}
+.new-request-btn:hover { background: var(--blue-light); border-color: var(--blue); color: var(--blue); }
+
+/* Stats row */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.stat-tile {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  gap: 4px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  border: 2px solid transparent;
 }
-.counter__number {
-  font-size: 56px;
+.stat-tile--red    { border-color: var(--red-light);    background: var(--red-light); }
+.stat-tile--green  { border-color: var(--green-light);  background: var(--green-light); }
+.stat-tile--yellow { border-color: var(--yellow-light); background: var(--yellow-light); }
+
+.stat-tile__number {
+  font-size: 28px;
   font-weight: 900;
   color: var(--text-primary);
   line-height: 1;
 }
-.counter__number--alert { color: var(--red); }
-.counter__label { font-size: 15px; color: var(--text-secondary); text-align: center; }
+.stat-tile--red   .stat-tile__number { color: var(--red); }
+.stat-tile--green .stat-tile__number { color: var(--green); }
+.stat-tile--yellow .stat-tile__number { color: var(--yellow); }
 
-/* Section header */
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.section-header__title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-/* Buildings list */
-.buildings-list { display: flex; flex-direction: column; gap: 10px; }
-
-/* Skeleton */
-.skeleton-list { display: flex; flex-direction: column; gap: 10px; }
-.skeleton-card {
-  height: 72px;
-  border-radius: 12px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.2s infinite;
-}
-@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-
-/* Error */
-.error-banner {
-  background: #fee2e2;
-  color: #b91c1c;
-  padding: 14px 16px;
-  border-radius: 10px;
-  font-size: 14px;
+.stat-tile__label {
+  font-size: 11px;
   font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.3;
 }
 
-/* FAB */
-.fab {
-  position: fixed;
-  bottom: 80px;
-  right: 20px;
-  background: var(--blue);
-  color: #fff;
+/* Buildings block */
+.buildings-block { display: flex; flex-direction: column; gap: 10px; }
+
+.section-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.skeleton-list { display: flex; flex-direction: column; gap: 8px; }
+
+.building-list {
+  background: var(--surface);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.building-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px;
   border: none;
-  border-radius: 28px;
-  padding: 14px 22px;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  min-height: 64px;
+  border-bottom: 1px solid var(--divider);
+  transition: background 0.1s;
+}
+.building-row:last-child { border-bottom: none; }
+.building-row:hover      { background: var(--bg); }
+.building-row:active     { background: var(--blue-light); }
+
+/* Status dot */
+.building-row__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot--green  { background: var(--green); }
+.dot--yellow { background: var(--yellow); }
+.dot--red    { background: var(--red); }
+
+.building-row__text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.building-row__name {
   font-size: 15px;
   font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-  min-height: 52px;
-  z-index: 100;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.building-row__dept {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
-/* Add building modal */
-.dialog-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 9000; padding: 24px;
+.building-row__badge {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--red-light);
+  color: var(--red);
 }
-.dialog {
-  background: var(--surface); border-radius: 16px;
-  padding: 28px 24px; width: 100%; max-width: 420px;
-  display: flex; flex-direction: column; gap: 18px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-}
-.dialog__title { font-size: 18px; font-weight: 700; margin: 0; color: var(--text-primary); }
-.dialog__actions { display: flex; gap: 12px; justify-content: flex-end; }
-.dialog__btn { padding: 12px 20px; border-radius: 8px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; min-height: 48px; }
-.dialog__btn--cancel  { background: var(--bg); color: var(--text-secondary); }
-.dialog__btn--confirm { background: var(--blue); color: #fff; }
-.dialog__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field__label { font-size: 14px; font-weight: 700; color: var(--text-primary); }
-.field__input { padding: 12px 14px; border: 2px solid var(--border); border-radius: 8px; font-size: 15px; min-height: 44px; width: 100%; box-sizing: border-box; }
-.field__error { font-size: 13px; color: var(--red); margin: 0; }
+.building-row__arrow { font-size: 20px; color: var(--text-secondary); flex-shrink: 0; }
+
+/* Add building row */
+.building-row--add { color: var(--blue); }
+.building-row__add-icon  { font-size: 18px; color: var(--blue); flex-shrink: 0; }
+.building-row__add-label { font-size: 15px; font-weight: 600; color: var(--blue); }
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 24px;
+  text-align: center;
+  background: var(--surface);
+  border-radius: 14px;
+}
+.empty-state__icon  { font-size: 40px; opacity: 0.4; }
+.empty-state__title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.empty-state__sub   { font-size: 14px; color: var(--text-secondary); max-width: 260px; line-height: 1.5; }
 
 /* Stepper */
 .stepper { display: flex; align-items: center; gap: 16px; }
@@ -306,16 +436,5 @@ async function handleAddBuilding() {
   border: 2px solid var(--border); background: var(--bg);
   font-size: 20px; font-weight: 700; cursor: pointer; color: var(--text-primary);
 }
-.stepper__value { font-size: 20px; font-weight: 800; color: var(--text-primary); min-width: 24px; text-align: center; }
-
-/* Transition */
-.dialog-enter-active, .dialog-leave-active { transition: all 0.2s ease; }
-.dialog-enter-from, .dialog-leave-to { opacity: 0; transform: scale(0.96); }
-
-/* Buttons */
-.btn--add {
-  padding: 10px 16px; background: var(--surface); border: 2px solid var(--border);
-  border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--text-primary);
-  min-height: 48px;
-}
+.stepper__value { font-size: 20px; font-weight: 800; color: var(--text-primary); min-width: 28px; text-align: center; }
 </style>

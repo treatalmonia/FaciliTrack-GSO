@@ -44,7 +44,8 @@ export const useElectricalStore = defineStore('electrical', () => {
     editBuilding:   null,
     addRoom:        null,
     editRoom:       null,
-    updateEquipment: null,
+    updateEquipment:    null,
+    addEquipmentItem:   null,
   })
 
   // ─── Getters ──────────────────────────────────────────────────────────────
@@ -631,6 +632,35 @@ export const useElectricalStore = defineStore('electrical', () => {
     }
   }
 
+  /**
+   * Add a new equipment item to a room.
+   */
+  async function updateRoomNumber(roomId, roomNumber) {
+    return await editRoom(roomId, { room_number: roomNumber })
+  }
+
+  async function addEquipmentItem(payload) {
+    try {
+      const { data, error: sbError } = await supabase
+        .from('equipment_item')
+        .insert({ ...payload, last_updated_date: new Date().toISOString().split('T')[0] })
+        .select()
+        .single()
+
+      if (sbError) throw sbError
+
+      // Add it into the local rooms state so the dropdown updates immediately
+      const room = rooms.value.find((r) => r.room_id === payload.room_id)
+      if (room) room.equipment_item.push(data)
+
+      return data
+    } catch (err) {
+      setError('addEquipmentItem', err.message ?? 'Failed to add item.')
+      console.error('[electrical] addEquipmentItem:', err)
+      return null
+    }
+  }
+
   // ─── Reset ────────────────────────────────────────────────────────────────
   function $reset() {
     buildings.value      = []
@@ -660,7 +690,8 @@ export const useElectricalStore = defineStore('electrical', () => {
     addRequest, editRequest, resolveRequest, archiveRequest,
     updateEquipmentCount,
     addBuilding, editBuilding,
-    addRoom, editRoom,
+    addRoom, editRoom, updateRoomNumber,
+    addEquipmentItem,
     $reset,
   }
 })

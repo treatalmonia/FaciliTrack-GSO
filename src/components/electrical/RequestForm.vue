@@ -7,7 +7,7 @@
       <select v-model="form.building_id" class="field__select" required @change="onBuildingChange">
         <option value="" disabled>Select a building</option>
         <option
-          v-for="b in buildings"
+          v-for="b in store.buildings"
           :key="b.building_id"
           :value="b.building_id"
         >{{ b.building_name }}</option>
@@ -51,11 +51,18 @@
       </select>
       <p class="field__hint">
         Item not listed?
-        <button type="button" class="field__link" @click="$emit('add-item')">
+        <button type="button" class="field__link" :disabled="!form.room_id" @click="showAddItemModal = true">
           Add it first
         </button>
       </p>
     </div>
+
+    <AddItemModal
+      v-if="showAddItemModal"
+      :room-id="form.room_id"
+      @close="showAddItemModal = false"
+      @saved="onItemAdded"
+    />
 
     <!-- Problem -->
     <div class="field">
@@ -118,6 +125,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useElectricalStore } from '@/stores/electrical'
+import AddItemModal from '@/components/electrical/AddItemModal.vue'
 
 const props = defineProps({
   initialData:  { type: Object,  default: null },   // for edit mode
@@ -126,7 +134,9 @@ const props = defineProps({
   loading:      { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['submit', 'add-item'])
+const emit = defineEmits(['submit'])
+const showAddItemModal = ref(false)
+const isPrefilling     = ref(false)
 
 const store = useElectricalStore()
 
@@ -145,7 +155,7 @@ const form = ref({
 })
 
 const problemOptions = [
-  'Busted', 'Defective', 'Not Working', 'Damaged', 'Missing', 'Other',
+  'Busted', 'Defective', 'Lacking', 'Other',
 ]
 
 const FLOOR_LABELS = [
@@ -206,6 +216,7 @@ async function onBuildingChange() {
 }
 
 function onFloorChange() {
+  if (isPrefilling.value) return
   form.value.room_id = ''
   form.value.item_id = ''
 }
@@ -218,13 +229,15 @@ watch(() => form.value.room_id, () => {
 onMounted(async () => {
   
 
-  if (!store.buildings.length) await store.fetchBuildings()
+  await store.fetchBuildings()
 
   if (props.prefillRoom) {
+    isPrefilling.value     = true
     form.value.building_id = props.prefillRoom.building_id
     await store.fetchRoomsByBuilding(props.prefillRoom.building_id)
-    form.value.floor_level  = props.prefillRoom.floor_level
-    form.value.room_id      = props.prefillRoom.room_id
+    form.value.floor_level = props.prefillRoom.floor_level
+    form.value.room_id     = props.prefillRoom.room_id
+    isPrefilling.value     = false
   }
 
   if (props.initialData) {
@@ -245,6 +258,12 @@ onMounted(async () => {
 })
 
 // ── Submit ────────────────────────────────────────────────────────────────────
+async function onItemAdded(newItem) {
+  showAddItemModal.value = false
+  await store.fetchRoomsByBuilding(form.value.building_id)
+  form.value.item_id = newItem.item_id
+}
+
 function handleSubmit() {
   if (dateError.value) return
 

@@ -9,7 +9,14 @@
 
       <div v-if="cat.expanded" class="eq-category__body">
         <div v-if="cat.items.length === 0" class="eq-category__empty">
-          No items recorded.
+          <span>No items recorded.</span>
+          <button
+            v-if="canEdit"
+            class="eq-category__add-btn"
+            @click="$emit('add-item', cat.key)"
+          >
+            + Add Item
+          </button>
         </div>
 
         <div
@@ -64,7 +71,7 @@ const props = defineProps({
   canEdit:   { type: Boolean, default: true },
 })
 
-defineEmits(['edit-item'])
+defineEmits(['edit-item', 'add-item'])
 
 const showWattage = ref(false)
 
@@ -139,9 +146,25 @@ watchEffect(() => {
 }
 
 .eq-category__empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 14px;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+.eq-category__add-btn {
+  font-style: normal;
+  padding: 6px 14px;
+  border: 1.5px solid var(--blue);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 36px;
 }
 
 .eq-item { display: flex; flex-direction: column; gap: 4px; }
