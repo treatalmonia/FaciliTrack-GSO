@@ -292,6 +292,17 @@ export const useElectricalStore = defineStore('electrical', () => {
     setLoading('addRequest', true)
     clearError('addRequest')
     try {
+      const { data: itemCheck } = await supabase
+        .from('equipment_item')
+        .select('total_count')
+        .eq('item_id', payload.item_id)
+        .single()
+
+      if (itemCheck && (payload.quantity_affected ?? 1) > itemCheck.total_count) {
+        setError('addRequest', `Quantity cannot exceed total units (${itemCheck.total_count}).`)
+        return null
+      }
+
       const insertData = {
         item_id:             payload.item_id,
         room_id:             payload.room_id,
@@ -320,12 +331,28 @@ export const useElectricalStore = defineStore('electrical', () => {
       if (sbError) throw sbError
 
       // Bump the equipment busted_count immediately
-      await supabase
+      const { data: currentItem } = await supabase
         .from('equipment_item')
-        .update({ busted_count: supabase.rpc('increment_busted', { row_id: payload.item_id, amount: payload.quantity_affected ?? 1 }) })
+        .select('busted_count, total_count')
         .eq('item_id', payload.item_id)
+        .single()
+
+      if (currentItem) {
+        const newBusted = Math.min(
+          (currentItem.busted_count ?? 0) + (payload.quantity_affected ?? 1),
+          currentItem.total_count
+        )
+        const newWorking = currentItem.total_count - newBusted
+        // busted count update
+        const { error: updateError } = await supabase
+          .from('equipment_item')
+          .update({ busted_count: newBusted, working_count: newWorking })
+          .eq('item_id', payload.item_id)
+        if (updateError) console.error('[electrical] busted update error:', updateError)
+      }
 
       requests.value.unshift(data)
+      await fetchRoomById(payload.room_id)
       return data
     } catch (err) {
       setError('addRequest', err.message ?? 'Failed to add request.')
@@ -340,6 +367,41 @@ export const useElectricalStore = defineStore('electrical', () => {
    * Edit an existing repair request (notes and item_type only if resolved;
    * full edit if still open).
    */
+  async function updateRequest(payload) {
+    setLoading('addRequest', true)
+    clearError('addRequest')
+    try {
+      const { request_id, ...fields } = payload
+      const { data, error: sbError } = await supabase
+        .from('repair_request')
+        .update(fields)
+        .eq('request_id', request_id)
+        .select(`
+          request_id, room_id, item_id, problem_description,
+          quantity_affected, date_reported, date_resolved,
+          action_taken, status, reported_by, notes,
+          equipment_item (
+            item_id, category, item_type,
+            total_count, busted_count, working_count, wattage_per_unit
+          )
+        `)
+        .single()
+
+      if (sbError) throw sbError
+
+      const idx = requests.value.findIndex((r) => r.request_id === request_id)
+      if (idx !== -1) requests.value[idx] = { ...requests.value[idx], ...data }
+
+      return data
+    } catch (err) {
+      setError('addRequest', err.message ?? 'Failed to update request.')
+      console.error('[electrical] updateRequest:', err)
+      return null
+    } finally {
+      setLoading('addRequest', false)
+    }
+  }
+
   async function editRequest(payload) {
     setLoading('editRequest', true)
     clearError('editRequest')
@@ -397,13 +459,20 @@ export const useElectricalStore = defineStore('electrical', () => {
       const req = requests.value.find((r) => r.request_id === payload.request_id)
       if (req) {
         const qty = req.quantity_affected ?? 1
-        const item = req.equipment_item
+        const { data: freshItem } = await supabase
+          .from('equipment_item')
+          .select('item_id, busted_count, total_count')
+          .eq('item_id', req.item_id)
+          .single()
+        const item = freshItem
         if (item) {
           const newBusted = Math.max(0, (item.busted_count ?? 0) - qty)
+          const newWorking = (item.total_count ?? 0) - newBusted
           await supabase
             .from('equipment_item')
-            .update({ busted_count: newBusted })
+            .update({ busted_count: newBusted, working_count: newWorking })
             .eq('item_id', item.item_id)
+          await fetchRoomById(payload.room_id ?? req.room_id)
         }
       }
 
@@ -622,7 +691,7 @@ export const useElectricalStore = defineStore('electrical', () => {
     try {
       await supabase.from('audit_log').insert({
         entity_type:        entityType,
-        entity_id:          String(entityId),
+        entity_id:          Number(entityId),
         change_description: description,
         changed_date:       new Date().toISOString(),
       })
@@ -687,7 +756,7 @@ export const useElectricalStore = defineStore('electrical', () => {
     fetchAllOpenRequests,
     fetchRoomsByBuilding, fetchRoomById,
     fetchRequestsByRoom,
-    addRequest, editRequest, resolveRequest, archiveRequest,
+    addRequest, updateRequest, editRequest, resolveRequest, archiveRequest,
     updateEquipmentCount,
     addBuilding, editBuilding,
     addRoom, editRoom, updateRoomNumber,

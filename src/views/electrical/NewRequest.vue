@@ -8,12 +8,15 @@
     <p class="page-subtitle">Fill in the details below and tap Save Request.</p>
 
     <RequestForm
+      v-if="!editRequestId || initialData"
       :prefill-room="prefillRoom"
+      :initial-data="initialData"
       :loading="store.loading.addRequest"
-      submit-label="Save Request"
+      :submit-label="editRequestId ? 'Save Changes' : 'Save Request'"
       @submit="handleSubmit"
-@add-item="goToAddItem"
+      @add-item="goToAddItem"
     />
+<div v-else class="loading-edit">Loading request...</div>
 
     <!-- Post-save options -->
     <Teleport to="body">
@@ -39,7 +42,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useElectricalStore } from '@/stores/electrical'
 import RequestForm from '@/components/electrical/RequestForm.vue'
@@ -60,32 +63,62 @@ const prefillRoom = computed(() => {
   return null
 })
 
+const editRequestId = computed(() =>
+  route.query.edit ? Number(route.query.edit) : null
+)
+
+const initialData = ref(null)
+
+onMounted(async () => {
+  if (editRequestId.value) {
+    await store.fetchBuildings()
+    const roomId = Number(route.query.room_id)
+    await store.fetchRoomsByBuilding(Number(route.query.building_id))
+    await store.fetchRequestsByRoom(roomId)
+    const req = store.openRequests.find(r => r.request_id === editRequestId.value)
+    console.log('FOUND REQ:', JSON.stringify(req, null, 2))
+    if (req) initialData.value = req
+  }
+})
+
 const showPostSave      = ref(false)
 const savedConfirmation = ref('')
 const lastSavedRoomId   = ref(null)
 const lastSavedBuildingId = ref(null)
 
 async function handleSubmit(formData) {
-  const result = await store.addRequest({
-    item_id:             formData.item_id,
-    room_id:             formData.room_id,
-    problem_description: formData.problem_description,
-    quantity_affected:   formData.quantity_affected,
-    date_reported:       formData.date_reported,
-    notes:               formData.notes || undefined,
-  })
+  let result
+
+  if (editRequestId.value) {
+    result = await store.updateRequest({
+      request_id:          editRequestId.value,
+      item_id:             formData.item_id,
+      room_id:             formData.room_id,
+      problem_description: formData.problem_description,
+      quantity_affected:   formData.quantity_affected,
+      date_reported:       formData.date_reported,
+      notes:               formData.notes || undefined,
+    })
+  } else {
+    result = await store.addRequest({
+      item_id:             formData.item_id,
+      room_id:             formData.room_id,
+      problem_description: formData.problem_description,
+      quantity_affected:   formData.quantity_affected,
+      date_reported:       formData.date_reported,
+      notes:               formData.notes || undefined,
+    })
+  }
 
   if (result) {
-    // Build confirmation message
     const building = store.buildings.find((b) => b.building_id === formData.building_id)
     const room     = store.rooms.find((r) => r.room_id === formData.room_id)
-    savedConfirmation.value = `${building?.building_name ?? ''} — ${room?.room_number ?? ''} ${room?.room_name ?? ''}`
+    savedConfirmation.value   = `${building?.building_name ?? ''} — ${room?.room_number ?? ''} ${room?.room_name ?? ''}`
     lastSavedRoomId.value     = formData.room_id
     lastSavedBuildingId.value = formData.building_id
-    showPostSave.value = true
+    showPostSave.value        = true
   } else {
-    // Error is shown by the form via store.error.addRequest
-    alert(store.error.addRequest ?? 'Failed to save request. Please try again.')
+    alert(store.error.addRequest ?? store.error.updateRequest ?? 'Failed to save request. Please try again.')
   }
 }
 
@@ -130,6 +163,7 @@ function goToRoom() {
 
 .page-title    { font-size: 24px; font-weight: 800; color: var(--text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--text-secondary); margin: 0; }
+.loading-edit { font-size: 15px; color: var(--text-secondary); padding: 24px 0; text-align: center; }
 
 /* Post-save dialog */
 .dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9000; padding: 24px; }

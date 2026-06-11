@@ -88,8 +88,12 @@
         type="number"
         class="field__input"
         min="1"
+        :max="selectedItem?.total_count ?? 999"
         placeholder="1"
       />
+      <p v-if="selectedItem && form.quantity_affected > selectedItem.total_count" class="field__error">
+        Cannot exceed total units ({{ selectedItem.total_count }})
+      </p>
     </div>
 
     <!-- Date Reported -->
@@ -116,14 +120,14 @@
     </div>
 
     <!-- Submit -->
-    <button type="submit" class="btn btn--submit" :disabled="loading">
+    <button type="submit" class="btn btn--submit" :disabled="loading || (selectedItem && form.quantity_affected > selectedItem.total_count)">
       {{ loading ? 'Saving…' : submitLabel }}
     </button>
   </form>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useElectricalStore } from '@/stores/electrical'
 import AddItemModal from '@/components/electrical/AddItemModal.vue'
 
@@ -201,6 +205,15 @@ const itemGroups = computed(() => {
   }))
 })
 
+const selectedItem = computed(() => {
+  const fromCurrentRoom = store.currentRoom?.equipment_item
+    ?.find(i => i.item_id === form.value.item_id) ?? null
+  if (fromCurrentRoom) return fromCurrentRoom
+  return store.rooms
+    .flatMap(r => r.equipment_item ?? [])
+    .find(i => i.item_id === form.value.item_id) ?? null
+})
+
 const dateError = computed(() => {
   if (form.value.date_reported > today) return 'Date reported cannot be in the future.'
   return ''
@@ -222,6 +235,7 @@ function onFloorChange() {
 }
 
 watch(() => form.value.room_id, () => {
+  if (isPrefilling.value) return
   form.value.item_id = ''
 })
 
@@ -241,19 +255,29 @@ onMounted(async () => {
   }
 
   if (props.initialData) {
-    Object.assign(form.value, {
-      building_id:         props.initialData.room?.building_id ?? '',
-      floor_level:         props.initialData.room?.floor_level  ?? '',
-      room_id:             props.initialData.room_id,
-      item_id:             props.initialData.item_id,
-      problem_description: props.initialData.problem_description,
-      quantity_affected:   props.initialData.quantity_affected ?? 1,
-      date_reported:       props.initialData.date_reported,
-      notes:               props.initialData.notes ?? '',
-    })
-    if (form.value.building_id) {
-      await store.fetchRoomsByBuilding(form.value.building_id)
+    isPrefilling.value = true
+    const buildingId = props.prefillRoom?.building_id ?? ''
+    const floorLevel = props.prefillRoom?.floor_level ?? ''
+    form.value.building_id = buildingId
+    form.value.floor_level = floorLevel
+    if (buildingId) {
+      await store.fetchRoomsByBuilding(buildingId)
     }
+    form.value.room_id             = props.initialData.room_id
+    await nextTick()
+    form.value.item_id             = props.initialData.item_id
+    const knownProblems = ['Busted', 'Defective', 'Lacking', 'Other']
+const savedProblem = props.initialData.problem_description
+if (knownProblems.includes(savedProblem)) {
+  form.value.problem_description = savedProblem
+} else {
+  form.value.problem_description = 'Other'
+  form.value.custom_problem = savedProblem
+}
+    form.value.quantity_affected   = props.initialData.quantity_affected ?? 1
+    form.value.date_reported       = props.initialData.date_reported
+    form.value.notes               = props.initialData.notes ?? ''
+    isPrefilling.value = false
   }
 })
 
@@ -266,6 +290,7 @@ async function onItemAdded(newItem) {
 
 function handleSubmit() {
   if (dateError.value) return
+  if (selectedItem.value && form.value.quantity_affected > selectedItem.value.total_count) return
 
   const payload = {
     ...form.value,

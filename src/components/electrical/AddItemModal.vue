@@ -6,19 +6,43 @@
         <p class="modal__subtitle">This item will be added to the selected room.</p>
 
         <div class="field">
-          <label class="field__label">Item Name <span class="field__req">*</span></label>
-          <input v-model="form.item_type" class="field__input" placeholder="e.g., Fluorescent Lamp" />
-        </div>
-
-        <div class="field">
           <label class="field__label">Category <span class="field__req">*</span></label>
-          <select v-model="form.category" class="field__select">
+          <select v-model="form.category" class="field__select" @change="form.item_type = ''">
             <option value="" disabled>Select a category</option>
             <option value="Lighting">Lighting Fixtures</option>
             <option value="Outlet">Convenience Outlet</option>
             <option value="AC">Air Conditioning Unit</option>
             <option value="Equipment">Machineries and Equipment</option>
           </select>
+        </div>
+
+        <div class="field">
+          <label class="field__label">Item Name <span class="field__req">*</span></label>
+          <select v-if="form.category" v-model="form.item_type" class="field__select">
+            <option value="" disabled>Select an item</option>
+            <template v-if="form.category === 'Equipment'">
+              <optgroup v-for="group in equipmentGroups" :key="group.label" :label="group.label">
+                <option v-for="item in group.items" :key="item" :value="item">{{ item }}</option>
+              </optgroup>
+            </template>
+            <template v-else>
+              <option v-for="item in itemOptions" :key="item" :value="item">{{ item }}</option>
+            </template>
+            <option value="__other__">Other (type manually)</option>
+          </select>
+          <input
+            v-if="!form.category"
+            class="field__input"
+            disabled
+            placeholder="Select a category first"
+          />
+          <input
+            v-if="form.item_type === '__other__'"
+            v-model="form.item_type_custom"
+            class="field__input"
+            placeholder="Type item name..."
+            style="margin-top: 8px"
+          />
         </div>
 
         <div class="field">
@@ -45,7 +69,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useElectricalStore } from '@/stores/electrical'
 
 const props = defineProps({
@@ -60,8 +84,90 @@ const store = useElectricalStore()
 const saving = ref(false)
 const error  = ref('')
 
+const ITEM_OPTIONS = {
+  Lighting: [
+    'LED bulb', 'LED bulb (pin type)', 'LED tube', 'CFL',
+    'Fluorescent lamp', 'Circular lamp', 'Cobra type lamp', 'Non-LED lamp',
+  ],
+  Outlet: [],
+  AC: [
+    'Split type', 'Window type', 'Cassette type', 'Floor mounted',
+  ],
+  Equipment: null, // uses groups
+}
+
+const equipmentGroups = [
+  {
+    label: 'Computers & Office Equipment',
+    items: [
+      'Desktop computer', 'Laptop', 'Monitor', 'Server', 'Printer',
+      'Scanner', 'Photocopier', 'Risograph', 'Plotter printer',
+      'Projector', 'CCTV camera', 'DVR', 'Intercom',
+    ],
+  },
+  {
+    label: 'Fans & Ventilation',
+    items: [
+      'Ceiling fan', 'Stand fan', 'Desk fan', 'Wall fan',
+      'Exhaust fan', 'Industrial fan', 'Electric fan',
+      'Air cooler', 'Air purifier',
+    ],
+  },
+  {
+    label: 'Kitchen / Pantry Equipment',
+    items: [
+      'Water dispenser', 'Refrigerator', 'Freezer', 'Upright freezer',
+      'Bio freezer', 'Microwave oven', 'Coffee maker', 'Rice cooker',
+      'Induction cooker', 'Electric stove', 'Juicer', 'Ice crusher',
+      'Can sealer', 'Band sealer', 'Vegetable cutter', 'Mixer/Kneader',
+      'Vacuum fryer', 'Vendo machine',
+    ],
+  },
+  {
+    label: 'Laboratory Equipment',
+    items: [
+      'Autoclave', 'Incubator', 'Sterilizer', 'Flow hood', 'Fume hood',
+      'Distilling apparatus', 'Rotary evaporator', 'PCR machine', 'pH meter',
+      'Luminar chamber', 'Spectrometer', 'Hydraulic bench',
+      'Pneumatic training bench', 'Universal testing machine',
+      'Point load testing machine', 'Por point probe',
+    ],
+  },
+  {
+    label: 'Industrial / Workshop Equipment',
+    items: [
+      'Welding machine', 'Portable welding machine', 'Plasma cutter',
+      'Laser cutter', 'Digital cutter', 'Table saw', 'Band saw',
+      'Grinder', 'Grain grinder', 'Planer', 'Post drill', 'Wood mill',
+      'Mill motor', 'Air compressor', 'Battery charger', 'Generator',
+      'Feed milling machine', 'CNC machine (small)', 'CNC machine (big)',
+      'UV printer',
+    ],
+  },
+  {
+    label: 'Water & Pump Systems',
+    items: [
+      'Water pump', 'Submersible pump', 'Fire pump', 'Jockey pump',
+      'Electric water heater', 'Water retort',
+    ],
+  },
+  {
+    label: 'Miscellaneous',
+    items: [
+      'Sound system', 'Flat-screen TV', 'Elevator', 'Emergency light',
+      'Automatic emergency light', 'Chiller', 'Hatcher', 'Fish aquarium',
+      'Dust vacuum machine', 'Oven dryer', 'Oven furnace', 'Electric furnace',
+      'Spray dryer', 'Cabinet dryer', 'Biobase furnace', 'Biobase machine',
+      'Dental chair assembly',
+    ],
+  },
+]
+
+const itemOptions = computed(() => ITEM_OPTIONS[form.value.category] ?? [])
+
 const form = ref({
   item_type:        '',
+  item_type_custom: '',
   category:         props.presetCategory,
   wattage_per_unit: null,
   total_count:      1,
@@ -69,14 +175,17 @@ const form = ref({
 
 async function handleSave() {
   error.value = ''
-  if (!form.value.item_type.trim()) { error.value = 'Item name is required.'; return }
+  const finalItemType = form.value.item_type === '__other__'
+    ? form.value.item_type_custom.trim()
+    : form.value.item_type
+  if (!finalItemType) { error.value = 'Item name is required.'; return }
   if (!form.value.category)         { error.value = 'Category is required.';  return }
   if (!form.value.total_count || form.value.total_count < 1) { error.value = 'Total units must be at least 1.'; return }
 
   saving.value = true
   const result = await store.addEquipmentItem({
     room_id:          props.roomId,
-    item_type:        form.value.item_type.trim(),
+    item_type:        finalItemType,
     category:         form.value.category,
     wattage_per_unit: form.value.wattage_per_unit || null,
     total_count:      form.value.total_count,
